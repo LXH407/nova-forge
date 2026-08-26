@@ -33,7 +33,16 @@ def check_update(cfg: dict) -> dict:
         res["msg"] = "未配置 GitHub 仓库地址"
         return res
     try:
-        rel = _http_get_json(api)
+        try:
+            rel = _http_get_json(api)
+        except Exception as e:
+            code = getattr(e, "code", None)
+            if code == 404:
+                # 尚未发布任何 Release（首次部署常见）
+                res["ok"] = True
+                res["msg"] = "暂无发布版本（更新尚未发布）"
+                return res
+            raise
         tag = rel.get("tag_name", "")
         res["latest_tag"] = tag
         res["latest_name"] = rel.get("name") or ""
