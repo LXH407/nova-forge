@@ -1,0 +1,20 @@
+# 密钥与构建产物一律不入库
+keys/
+*.pem
+!assets/public_key.pem
+dist/
+build/
+__pycache__/
+*.pyc
+*.spec.bak
+.DS_Store
+
+# 临时测试产物
+_shots/
+_test_cli/
+_tmp_dl/
+_run_out.txt
+NovaForge_debug.spec
+*.log
+
+backend/data/
