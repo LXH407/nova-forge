@@ -1,0 +1,5 @@
+# 运行 GUI:  pip install -r requirements.txt && python main.py
+# 打包 EXE:   pyinstaller --noconfirm NovaForge.spec
+requests>=2.28
+cryptography>=41.0
+Pillow>=9.0
