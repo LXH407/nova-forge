@@ -149,7 +149,10 @@ def resolve_entry(cfg: dict, entry: dict) -> list:
 
 
 def _download_one(cfg: dict, url: str, dest_dir: str, filename: str,
-                  progress=None, log=None, monitor: SpeedMonitor = None) -> tuple:
+                  progress=None, log=None, monitor: SpeedMonitor = None,
+                  pause_event=None, cancel_event=None) -> tuple:
+    """下载单个文件（带断点续传 + 慢速检测 + 暂停/取消）。
+    返回 ("ok", path) / ("slow", part_path) / ("cancelled", part_path) / ("error", msg)。"""
     import requests
     os.makedirs(dest_dir, exist_ok=True)
     dest = os.path.join(dest_dir, filename)
@@ -166,7 +169,8 @@ def _download_one(cfg: dict, url: str, dest_dir: str, filename: str,
                 resume = 0
                 if os.path.exists(part):
                     os.remove(part)
-                return _download_one(cfg, url, dest_dir, filename, progress, log, monitor)
+                return _download_one(cfg, url, dest_dir, filename, progress, log, monitor,
+                                     pause_event, cancel_event)
             if r.status_code == 200 and resume:
                 resume = 0
                 open(part, "wb").close()
@@ -177,6 +181,13 @@ def _download_one(cfg: dict, url: str, dest_dir: str, filename: str,
             mode = "ab" if resume else "wb"
             with open(part, mode) as f:
                 for chunk in r.iter_content(chunk_size=CHUNK):
+                    if cancel_event and cancel_event.is_set():
+                        return ("cancelled", part)
+                    if pause_event and pause_event.is_set():
+                        while pause_event.is_set():
+                            if cancel_event and cancel_event.is_set():
+                                return ("cancelled", part)
+                            time.sleep(0.2)
                     if not chunk:
                         continue
                     f.write(chunk)
@@ -207,24 +218,27 @@ def _download_one(cfg: dict, url: str, dest_dir: str, filename: str,
 
 
 def smart_download(cfg: dict, url_list: list, dest_dir: str, filename: str,
-                   progress=None, log=None) -> tuple:
+                   progress=None, log=None, pause_event=None, cancel_event=None) -> tuple:
     monitor = SpeedMonitor(cfg.get("speed_monitor_window", 5.0))
     for idx, url in enumerate(url_list):
         if idx > 0:
             if log:
                 log(f"↺ 自动切换下载源 → {_source_label(url)}（断点续传）")
-        res, extra = _download_one(cfg, url, dest_dir, filename, progress, log, monitor)
+        res, extra = _download_one(cfg, url, dest_dir, filename, progress, log, monitor,
+                                   pause_event, cancel_event)
         if res == "ok":
             return (True, extra)
         if res == "slow":
             continue
+        if res == "cancelled":
+            return (False, "已取消")
         if log:
             log(f"✗ 源失败（{_source_label(url)}）：{extra}")
     return (False, f"所有下载源均失败：{filename}")
 
 
 def download_entry(cfg: dict, entry: dict, dest_dir: str,
-                   progress=None, log=None) -> dict:
+                   progress=None, log=None, pause_event=None, cancel_event=None) -> dict:
     result = {"ok": 0, "fail": 0, "files": [], "errors": []}
     try:
         file_list = resolve_entry(cfg, entry)
@@ -239,9 +253,14 @@ def download_entry(cfg: dict, entry: dict, dest_dir: str,
     if log:
         log(f"共 {len(file_list)} 个文件，开始全自动下载")
     for i, (urls, fn) in enumerate(file_list, 1):
+        if cancel_event and cancel_event.is_set():
+            if log:
+                log("已停止下载")
+            break
         if log:
             log(f"[{i}/{len(file_list)}] {fn}")
-        ok, extra = smart_download(cfg, urls, dest_dir, fn, progress, log)
+        ok, extra = smart_download(cfg, urls, dest_dir, fn, progress, log,
+                                   pause_event, cancel_event)
         if ok:
             result["ok"] += 1
             result["files"].append(os.path.join(dest_dir, fn))
