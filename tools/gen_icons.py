@@ -68,10 +68,39 @@ def content_icon(fname, letter, color, ring=None):
     im.save(os.path.join(ROOT, "icons", f"{fname}.png"))
 
 
+def gen_extra_assets():
+    """生成客户端打包所需 logo_main / logo_alt / bg（构建时自动补齐，避免仓库缺二进制资产）。"""
+    S = 512
+    # logo_main：紫色圆角方块 + 白色 NF 徽标（Header 品牌区）
+    im, d = rounded(S, 118, (124, 58, 237, 255))
+    d.ellipse([S - 158, 58, S - 30, 186], outline=(255, 255, 255, 80), width=6)
+    f = font(180)
+    d.text((S // 2, S // 2 + 8), "NF", anchor="mm", font=f, fill=(255, 255, 255, 255))
+    im.save(os.path.join(ROOT, "assets", "logo_main.png"))
+    # logo_alt：深色底 + 青色描边（备用变体）
+    im2, d2 = rounded(S, 118, (11, 15, 26, 255))
+    d2.ellipse([S - 158, 58, S - 30, 186], outline=(0, 229, 255, 160), width=6)
+    d2.text((S // 2, S // 2 + 8), "NF", anchor="mm", font=f, fill=(0, 229, 255, 255))
+    im2.save(os.path.join(ROOT, "assets", "logo_alt.png"))
+    # bg：紫色垂直渐变（备用背景）
+    W, H = 1200, 780
+    grad = Image.new("RGBA", (W, H))
+    for y in range(H):
+        t = y / max(1, H - 1)
+        k = t
+        r = int(0x5B + (0xA8 - 0x5B) * k)
+        g = int(0x21 + (0x5B - 0x21) * k)
+        b = int(0xB6 + (0xFA - 0xB6) * k)
+        grad.paste((r, g, b, 255), (0, y, W, y + 1))
+    grad.save(os.path.join(ROOT, "assets", "bg.png"))
+    print("extra assets OK")
+
+
 def main():
     os.makedirs(os.path.join(ROOT, "assets"), exist_ok=True)
     os.makedirs(os.path.join(ROOT, "icons"), exist_ok=True)
     gen_app_icon()
+    gen_extra_assets()
     content_icon("qwen", "Q", (0, 229, 255, 255))
     content_icon("deepseek", "D", (139, 92, 246, 255))
     content_icon("llama", "L", (52, 211, 153, 255))
